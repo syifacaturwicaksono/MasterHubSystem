@@ -1,187 +1,179 @@
 <div align="center">
 
-# 📬 MasterHubSystem
+# 📮 Masterhub System
 
-**Master Hub CRM untuk pengiriman email ke partner dan pengingat otomatis.**
+**Pusat monitoring case dan pengiriman email massal (BC Email) untuk operasional servis.**
+Upload sheet Excel, validasi otomatis, lalu kirim laporan ke setiap perusahaan lewat antrean yang aman.
 
-Timer dan penjadwal berbasis Python, berjalan sebagai Windows Service melalui NSSM.
+![PHP](https://img.shields.io/badge/PHP-8.1+-777BB4?logo=php&logoColor=white)
+![Laravel](https://img.shields.io/badge/Laravel-10-FF2D20?logo=laravel&logoColor=white)
+![MySQL](https://img.shields.io/badge/MySQL-8-4479A1?logo=mysql&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-PHPUnit-3C9CD7?logo=phpunit&logoColor=white)
+![Static analysis](https://img.shields.io/badge/Larastan-level%205-4F5B93)
 
-![Python](https://img.shields.io/badge/Python-3.x-3776AB?style=for-the-badge&logo=python&logoColor=white)
-![Windows Service](https://img.shields.io/badge/Windows-Service-0078D6?style=for-the-badge&logo=windows&logoColor=white)
-![NSSM](https://img.shields.io/badge/NSSM-Service%20Manager-2F3542?style=for-the-badge)
-![Status](https://img.shields.io/badge/Status-Active-2ea44f?style=for-the-badge)
+[Fitur](#-fitur) · [Alur PO Labor](#-alur-po-labor) · [Instalasi](#-instalasi) · [Testing](#-testing) · [Struktur](#-struktur-proyek)
 
-[Fitur](#-fitur) · [Arsitektur](#-arsitektur) · [Instalasi](#-instalasi) · [Menjalankan sebagai Service](#-menjalankan-sebagai-windows-service-nssm) · [Struktur Folder](#-struktur-folder)
+<!-- Ganti dengan screenshot asli: simpan di docs/screenshots/ -->
+<!-- <img src="docs/screenshots/dashboard.png" alt="Dashboard Masterhub" width="820"> -->
 
 </div>
 
 ---
 
-## ✨ Tentang Project
+## ✨ Fitur
 
-**MasterHubSystem** adalah pusat kendali (hub) dalam sistem CRM yang mengatur komunikasi dengan partner. Sistem ini mengirim email secara otomatis dan menjalankan pengingat (reminder) sesuai jadwal, tanpa perlu dijalankan manual setiap hari.
+| | |
+|---|---|
+| 📥 **Upload Sheet** | Impor Excel untuk 10 jenis monitoring: WIP, TAT 5 hari, TAT 14 hari, KCI, Finish Repair, MPR, Reminder Invoice, Pembayaran, KLA, dan PO Labor. |
+| 💰 **PO Labor otomatis** | Labor dihitung per case dari sheet *Parts* dan *Transaction Report*, lengkap dengan popup review part dan kategori. |
+| 🔁 **Deteksi RR (Re Repair)** | Serial No sama dalam satu file, dan lintas bulan dengan jendela **30 hari** dari riwayat. |
+| ✏️ **Revisi tanpa upload ulang** | Buka data PO Labor terakhir yang belum terkirim, koreksi, lalu simpan. |
+| 📧 **BC Email** | Pratinjau dan kirim email per perusahaan memakai template dan footer yang bisa diedit (Summernote). |
+| 📣 **Broadcast All** | Kirim massal ke banyak perusahaan sekaligus. |
+| ⏱️ **Antrean batch global** | Pengiriman dijadwalkan per batch dengan jeda, dan dua pengiriman yang diklik hampir bersamaan tidak menabrak jadwal (`lockForUpdate`). |
+| 🗂️ **Data master** | Email Master, Template, Footer, User, PN Master, dan Sparepart Master (kategori dan harga labor IPG/PSG). |
+| 📊 **Dashboard dan Raw Data** | Ringkasan case dan ekspor data mentah. |
+| 🔐 **Login berbasis peran** | Halaman utama hanya untuk user yang sudah login, dengan middleware admin untuk menu tertentu. |
 
-Master Hub merupakan bagian dari sistem CRM yang lebih besar bersama modul **CRM CM** dan **CRM CS**.
+## 🔄 Alur PO Labor
 
-## 🚀 Fitur
-
-- 📧 **Pengiriman email ke partner** secara otomatis
-- ⏰ **Reminder terjadwal** dengan timer berbasis Python
-- 🖥️ **Berjalan sebagai Windows Service** via NSSM: otomatis aktif saat komputer menyala dan restart sendiri jika terhenti
-- 🏷️ **Klasifikasi kategori part** menggunakan Naive Bayes *(bagian dari penelitian skripsi)*
-- 🌐 **Antarmuka web** untuk pengelolaan data dan pengaturan
-
-## 🧩 Arsitektur
-
-```text
-┌──────────────┐     ┌──────────────┐
-│   CRM CM     │     │   CRM CS     │
-│ (PHP+Baileys)│     │ (PHP+Baileys)│
-└──────┬───────┘     └──────┬───────┘
-       │                    │
-       └─────────┬──────────┘
-                 ▼
-        ┌─────────────────┐       ┌──────────────┐
-        │  Master Hub     │──────▶│ Email Partner│
-        │  (Web + Python) │       └──────────────┘
-        │  Timer/Scheduler│       ┌──────────────┐
-        └────────┬────────┘──────▶│   Reminder   │
-                 │                └──────────────┘
-                 ▼
-        ┌─────────────────┐
-        │    Database     │
-        └─────────────────┘
+```mermaid
+flowchart LR
+    A[Upload Excel<br/>M004-PO Labor] --> B[Langkah 1<br/>Review RR]
+    B --> C[Langkah 2<br/>Review Part & Kategori]
+    C --> D[(Tabel apo)]
+    D --> E[BC Email<br/>+ Excel PO Labor]
+    D -.-> F[(apo_history<br/>riwayat RR 30 hari)]
+    E --> G[Antrean batch<br/>BroadcastScheduler]
+    D --> H[Revisi]
+    H --> D
 ```
 
-> Sesuaikan diagram di atas dengan alur sebenarnya dari sistem Anda.
+Aturan utama yang diterapkan saat Labor dihitung:
 
-## 🛠️ Tech Stack
+- Part yang menentukan Labor adalah part berstatus **Defective** yang paling awal di-order (atau part yang dipilih manual di popup).
+- **Out Warranty** tidak dimasukkan, kecuali kode **511** dengan status *Sales Delay* (Labor flat).
+- **Printer** dihitung sebagai *Simple Repair*, dan **Whole Unit** sebagai *Replace Unit*.
+- **Close Repair tanpa part** mendapat kategori *Rebuild, Re install, Recovery*.
+- **Cancel** dan **Void Case** tanpa Labor.
+- **RR** (case ke-2 dan seterusnya per Serial No, atau case yang masih dalam 30 hari setelah case lama ditutup) tanpa Labor, kecuali dipilih *Dapat Labor*.
 
-| Bagian | Teknologi |
-| --- | --- |
-| Timer / Penjadwal | Python |
-| Service Manager | NSSM |
-| Web / Backend | `[ISI: mis. PHP / CodeIgniter]` |
-| Database | `[ISI: mis. MySQL]` |
-| Frontend | `[ISI: mis. HTML, CSS, JavaScript]` |
-| Klasifikasi | Naive Bayes |
+## 🧰 Teknologi
 
-## 📸 Tampilan
+- **Backend:** PHP 8.1+, Laravel 10, Laravel Sanctum
+- **Excel:** [Maatwebsite Excel](https://laravel-excel.com/) (PhpSpreadsheet)
+- **Database:** MySQL 8
+- **Antrean dan email:** Laravel Queue dan Mail (`jobs`, `job_batches`, `failed_jobs`)
+- **Frontend:** Blade, Summernote (editor template email)
+- **Kualitas kode:** PHPUnit 10, Larastan, Laravel Pint
 
-<!-- Ganti dengan screenshot asli. Simpan gambar di folder docs/ -->
-| Dashboard | Pengaturan Reminder |
-| --- | --- |
-| ![Dashboard](docs/dashboard.png) | ![Reminder](docs/reminder.png) |
+## 🚀 Instalasi
 
-## ⚙️ Instalasi
-
-### Prasyarat
-
-- Windows 10/11 atau Windows Server
-- Python 3.x
-- [NSSM](https://nssm.cc/download)
-- Web server dan database sesuai kebutuhan project
-
-### Langkah
+**Prasyarat:** PHP 8.1+ (ekstensi `zip`, `gd`, `mbstring`, `pdo_mysql`), Composer, MySQL 8. Di Windows, [Laragon](https://laragon.org/) sudah cukup.
 
 ```bash
-# 1. Clone repositori
-git clone https://github.com/syifacaturwicaksono/MasterHubSystem.git
-cd MasterHubSystem
+# 1. Ambil kode
+git clone https://github.com/<username>/masterhub.git
+cd masterhub
 
-# 2. (Opsional) Buat virtual environment
-python -m venv venv
-venv\Scripts\activate
+# 2. Pasang dependensi
+composer install
 
-# 3. Pasang dependensi
-pip install -r requirements.txt
+# 3. Konfigurasi
+cp .env.example .env
+php artisan key:generate
 ```
 
-### Konfigurasi
-
-Salin file contoh konfigurasi lalu isi sesuai lingkungan Anda:
-
-```bash
-copy .env.example .env
-```
+Isi koneksi database dan email di `.env`:
 
 ```env
-# Contoh isi .env (jangan pernah commit file .env asli!)
-DB_HOST=localhost
-DB_NAME=masterhub
-DB_USER=your_user
-DB_PASS=your_password
+DB_DATABASE=masterhub
+DB_USERNAME=root
+DB_PASSWORD=
 
-SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_USER=your_email@example.com
-SMTP_PASS=your_email_password
+QUEUE_CONNECTION=database
+MAIL_MAILER=smtp
 ```
 
-> ⚠️ **Penting:** jangan pernah mengunggah file `.env`, password, atau token ke repositori publik. Pastikan `.env` sudah masuk `.gitignore`.
+```bash
+# 4. Siapkan database
+#    Buat database "masterhub", lalu impor struktur tabel (masterhub.sql)
+#    lewat phpMyAdmin atau: mysql -u root masterhub < masterhub.sql
 
-## 🪟 Menjalankan sebagai Windows Service (NSSM)
-
-Agar timer berjalan terus di latar belakang, daftarkan sebagai service:
-
-```bat
-:: Daftarkan service (sesuaikan path Python dan skrip Anda)
-nssm install MasterHubTimer "C:\Python\python.exe" "C:\MasterHubSystem\timer.py"
-
-:: Atur folder kerja
-nssm set MasterHubTimer AppDirectory "C:\MasterHubSystem"
-
-:: Jalankan otomatis saat Windows menyala
-nssm set MasterHubTimer Start SERVICE_AUTO_START
-
-:: Mulai service
-nssm start MasterHubTimer
+# 5. Jalankan
+php artisan serve
+php artisan queue:work      # worker pengiriman email, jalankan di terminal terpisah
 ```
 
-Perintah berguna lainnya:
+> ⚠️ Tabel seperti `apo`, `apo_history`, `labor_categories`, `part_master`, dan `sparepart_master` dibuat dari `masterhub.sql`, bukan dari `php artisan migrate`.
 
-| Perintah | Fungsi |
-| --- | --- |
-| `nssm status MasterHubTimer` | Cek status service |
-| `nssm restart MasterHubTimer` | Restart service |
-| `nssm stop MasterHubTimer` | Hentikan service |
-| `nssm remove MasterHubTimer confirm` | Hapus service |
+### Menjalankan sebagai service (Windows)
 
-## 📁 Struktur Folder
+Worker memakai kode yang dimuat saat service dijalankan. Setelah mengubah kode, restart:
+
+```powershell
+nssm restart NAMA_SERVICE
+```
+
+## 🧪 Testing
+
+Tes memakai **database terpisah** supaya data asli aman.
+
+1. Buat database kosong `masterhub_test` dan impor struktur dari `masterhub.sql`.
+2. Salin `.env` menjadi `.env.testing`, lalu ubah:
+
+   ```env
+   APP_ENV=testing
+   DB_DATABASE=masterhub_test
+   MAIL_MAILER=log
+   QUEUE_CONNECTION=sync
+   ```
+
+3. Jalankan:
+
+   ```bash
+   php artisan config:clear
+   php artisan test --testsuite=Feature
+   vendor/bin/phpstan analyse --memory-limit=1G
+   ```
+
+Cakupan tes saat ini: upload PO Labor, aturan RR 30 hari, revisi PO Labor, penjadwal batch, login, dan penjagaan route.
+
+> 🛡️ Tes akan **berhenti otomatis** kalau database aktif namanya tidak berakhiran `_test`. Upload PO Labor menjalankan `TRUNCATE` pada tabel `apo`, jadi pengaman ini mencegah data asli terhapus.
+
+## 📁 Struktur proyek
 
 ```text
-MasterHubSystem/
-├── docs/              # Screenshot dan dokumentasi
-├── app/               # Kode aplikasi web
-├── scheduler/         # Skrip timer/penjadwal Python
-├── .env.example       # Contoh konfigurasi
-├── requirements.txt   # Dependensi Python
-└── README.md
+app/
+├── Exports/                  # Excel PO Labor, Raw Data
+├── Http/Controllers/
+│   ├── ImportController.php  # upload, RR, revisi
+│   ├── EmailController.php   # BC Email
+│   ├── BroadcastController.php
+│   └── Concerns/             # trait: HandlesRrHistory, HandlesPoLaborRevision, ...
+├── Imports/                  # ApoImport, ApoPartsImport, MultiSheetImport, ...
+├── Jobs/                     # SendBcEmailJob, SendBroadcastEmailJob
+├── Models/
+├── Services/                 # PartCategoryResolver, PartLaborMapping, CompanyMapping
+└── Support/                  # BroadcastScheduler, CompanyGroup
+resources/views/              # halaman Blade (dashboard, import, bulk, master data)
+tests/
+├── Feature/                  # tes upload, RR 30 hari, revisi, login
+└── Support/                  # pembuat file Excel uji
 ```
 
-> Sesuaikan struktur di atas dengan folder project Anda yang sebenarnya.
+## 🔒 Catatan keamanan
 
-## 🗺️ Rencana Pengembangan
+- Jangan commit `.env`, `.env.testing`, atau file `.sql` berisi data asli.
+- Password SMTP per user disimpan di `user_masters.smtp_password`. Pertimbangkan enkripsi sebelum dipakai di server publik.
+- Periksa route di luar grup `auth` di `routes/web.php` (mis. `/upload/resolve-parts`) dan pastikan memang sengaja terbuka.
 
-- [ ] Template email yang dapat disesuaikan per partner
-- [ ] Log riwayat pengiriman email dan reminder
-- [ ] Notifikasi jika pengiriman gagal
+## 🗺️ Roadmap
 
-## 🔗 Project Terkait
+- [ ] Tes tampilan dengan Laravel Dusk (login, Review RR, Dashboard)
+- [ ] Menurunkan temuan Larastan sampai tanpa baseline
+- [ ] Menyatukan struktur database ke migrations
 
-- **CRM CM**: modul CRM berbasis PHP dengan integrasi WhatsApp (Baileys)
-- **CRM CS**: modul CRM berbasis PHP dengan integrasi WhatsApp (Baileys)
+## 📄 Lisensi
 
-## 👤 Penulis
-
-**Syifa Catur Wicaksono**
-
-- GitHub: [@syifacaturwicaksono](https://github.com/syifacaturwicaksono)
-
----
-
-<div align="center">
-
-Dibuat dengan ☕ dan Python
-
-</div>
+Proyek internal. Tentukan lisensi sebelum dipublikasikan (mis. MIT) dan tambahkan file `LICENSE`.
