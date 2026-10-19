@@ -1,0 +1,23 @@
+PEMISAHAN FILE CRM-SYSTEM21
+===========================
+Cara pasang: salin folder app/ dan resources/ ke proyek Anda (timpa file yang sama).
+Backup dulu proyek asli. Lalu jalankan di terminal Laragon:
+  composer dump-autoload
+  php artisan view:clear
+  php artisan route:list     (harus 59 route)
+
+Controller (dipecah jadi Trait di app/Http/Controllers/Concerns/):
+  EmailController  -> Concerns/Email/*   (4 trait)
+  ImportController -> Concerns/Import/*  (4 trait)
+  Nama method & routes/web.php tidak berubah.
+
+Blade (dipecah jadi partial @include):
+  import.blade.php          -> resources/views/import/{styles,sections,scripts}/
+  bulk.blade.php            -> resources/views/bulk/{styles,sections,modals,scripts,assets}/
+  sparepart_master.blade.php-> resources/views/sparepart_master/...
+  template_master.blade.php -> resources/views/template_master/...
+Tiap partial diawali komentar {{-- [PARTIAL] ... --}} berisi asal & nomor baris aslinya.
+
+PENTING (skrip import/script 02-12 dan sparepart_master/scripts 01-02):
+  Ini potongan berurutan dari SATU fungsi JavaScript besar. Jangan diurutkan ulang
+  atau dipakai sendirian. Di dalam <script> yang sama mereka harus di-include berurutan.
